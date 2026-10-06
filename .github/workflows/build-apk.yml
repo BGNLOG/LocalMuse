@@ -1,0 +1,71 @@
+name: Build LocalMuse APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract LocalMuse
+        run: |
+          unzip LocalMuse-Milestone1-PhoneBuild-Source.zip
+          chmod +x LocalMuse/gradlew
+          chmod +x LocalMuse/scripts/*.sh
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android toolchain
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            'platform-tools' \
+            'platforms;android-36' \
+            'build-tools;36.0.0' \
+            'ndk;29.0.13113456' \
+            'cmake;3.31.6'
+
+      - name: Fetch llama.cpp
+        working-directory: LocalMuse
+        run: ./scripts/bootstrap-llama.sh
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Verify project
+        working-directory: LocalMuse
+        run: ./scripts/verify-source.sh
+
+      - name: Build signed APK
+        working-directory: LocalMuse
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Prepare APK
+        run: |
+          mkdir -p dist
+          cp LocalMuse/app/build/outputs/apk/debug/app-debug.apk \
+             dist/LocalMuse.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalMuse-APK
+          path: dist/LocalMuse.apk
+          retention-days: 30
